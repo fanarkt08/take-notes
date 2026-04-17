@@ -2,75 +2,77 @@
 
 namespace App\Http\Controllers;
 
+use App\Mail\NoteCreated;
 use App\Models\Note;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Mail;
 
 class NoteController extends Controller
 {
-    /**
-     * Display a listing of the resource.
-     */
     public function index()
     {
-        $notes = Note::where("user_id", Auth::id())->get();
+        $user = Auth::user();
+
+        if ($user->hasPermissionTo('manage notes')) {
+            $notes = Note::with('user')->get();
+        } else {
+            $notes = Note::where('user_id', $user->id)->get();
+        }
 
         return view('notes.index', compact('notes'));
     }
 
-    /**
-     * Show the form for creating a new resource.
-     */
     public function create()
     {
+        Gate::authorize('create', Note::class);
+
         return view('notes.create');
     }
 
-    /**
-     * Store a newly created resource in storage.
-     */
     public function store(Request $request)
     {
-        // Validation basique à compléter
-        // $validated = $request->validate([
-            
-        // ]);
+        Gate::authorize('create', Note::class);
+
+        $validated = $request->validate([
+            'title'   => 'required|min:3|max:255',
+            'content' => 'required|min:5',
+        ]);
 
         $note = new Note($validated);
         $note->user()->associate(Auth::user());
         $note->save();
 
+        Mail::to(Auth::user()->email)->send(new NoteCreated($note));
 
         return redirect()
             ->route('notes.index')
-            ->with('status', 'Note créé avec succès.');
+            ->with('status', 'Note créée avec succès.');
     }
 
-    /**
-     * Display the specified resource.
-     */
     public function show(Note $note)
     {
+        Gate::authorize('view', $note);
+
         return view('notes.show', compact('note'));
     }
 
-    /**
-     * Show the form for editing the specified resource.
-     */
     public function edit(Note $note)
     {
+        Gate::authorize('update', $note);
+
         return view('notes.edit', compact('note'));
     }
 
-    /**
-     * Update the specified resource in storage.
-     */
     public function update(Request $request, Note $note)
     {
-        // Validation basique à compléter
-        // $validated = $request->validate([
-            
-        // ]);
+        Gate::authorize('update', $note);
+
+        $validated = $request->validate([
+            'title'   => 'required|min:3|max:255',
+            'content' => 'required|min:5',
+        ]);
 
         $note->update($validated);
 
@@ -79,11 +81,10 @@ class NoteController extends Controller
             ->with('status', 'Note mise à jour avec succès.');
     }
 
-    /**
-     * Remove the specified resource from storage.
-     */
     public function destroy(Note $note)
     {
+        Gate::authorize('delete', $note);
+
         $note->delete();
 
         return redirect()
